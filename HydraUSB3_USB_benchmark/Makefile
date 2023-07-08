@@ -7,10 +7,10 @@ PREFIX = /usr/local
 CPPFLAGS = -DVERSION=\"$(VERSION)\"
 
 ifeq ($(OS), Windows_NT)
-CFLAGS = -Wall -O2 `pkg-config --cflags libusb-1.0` $(INCLUDES)
+CFLAGS = -Wall -O3 `pkg-config --cflags libusb-1.0` $(INCLUDES)
 LDFLAGS = -L/mingw64/lib -I/mingw64/include/libusb-1.0 -lusb-1.0
 else
-CFLAGS = -Wall -O2 `pkg-config --cflags libusb-1.0` $(INCLUDES)
+CFLAGS = -Wall -O3 `pkg-config --cflags libusb-1.0` $(INCLUDES)
 LDFLAGS = `pkg-config --libs libusb-1.0`
 endif
 

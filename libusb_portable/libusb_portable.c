@@ -568,6 +568,169 @@ int usb_read_EP2(libusb_device_handle *handle, uint32_t* data_rx, int data_size_
 	}
 }
 
+uint32_t g_async_xfer_total;
+uint32_t g_async_xfer_idx;
+uint32_t g_async_xfer_cnt;
+int g_loop_stop;
+static void on_usb_read_EP2_async(struct libusb_transfer *transfer)
+{
+
+#if LIBUSB_API_VERSION >= 0x01000103
+    int trans_id = libusb_transfer_get_stream_id(transfer);
+#else
+    int trans_id = 0;
+#endif
+    int status;
+
+	if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
+    log_printf_dbg("trans[%d]: txlen=%d, status = %d\n", trans_id, transfer->actual_length, (int)transfer->status);
+    }
+
+    if (transfer->status == LIBUSB_TRANSFER_COMPLETED) {
+        status = 0; // OK
+            
+		g_async_xfer_total += transfer->actual_length;
+		g_async_xfer_idx ++;
+		
+		if (g_async_xfer_idx == g_async_xfer_cnt) 
+			g_loop_stop = 1;
+
+    } else if (transfer->status == LIBUSB_TRANSFER_CANCELLED) {
+        //DM_LOG_T("trans[%d] cancelled (last_tx=%d)\n", trans_id, transfer->actual_length);
+        //status = DMCAM_ERR_CAP_CANCEL;
+        status = 0;
+    } else if (transfer->status == LIBUSB_TRANSFER_TIMED_OUT) {
+        //DM_LOG_D("trans[%d] timeout (last_tx=%d)\n", trans_id, transfer->actual_length);
+        status = 1;
+    } else {
+        if (transfer->status == LIBUSB_TRANSFER_STALL) {
+            //DM_LOG_W("trans[%d] stall (last_tx=%d)\n", trans_id, transfer->actual_length);
+            status = 2;
+
+            /* try to clear stall */
+            //if (libusb_clear_halt(H_LLDEV(dev)->h_usb, H_LLDEV(dev)->ep_din) < 0) {
+            //    DM_LOG_E(" Clear halt failed on EP: %0x!\r\n", H_LLDEV(dev)->ep_din);
+            //}
+        } else {
+            //DM_LOG_W("trans[%d] error (%d) (last_tx=%d)\n", trans_id, transfer->status, transfer->actual_length);
+            status = 3;
+        }
+    }
+
+    /* invoke callback */
+    //if (H_LLDEV(dev)->trans_cb) {
+    //    H_LLDEV(dev)->trans_cb(dev, status,
+    //                           transfer->buffer, transfer->actual_length,
+    //                           H_LLDEV(dev)->trans_cb_arg);
+    //}
+
+    //cap_blk->issued = 0; // set to non-issue state 
+    /* issue transfer again */
+    //if (transfer->length > 0 && !g_loop_stop && status != 0 ) {
+    //    //DM_LOG_T("trans[%d] issue: size=%d \n", trans_id, transfer->length);
+    //    /* Re-submit the transfer object with default timeout */
+    //    //transfer->timeout = USB_TRANS_TIMEOUT_MSEC;
+    //    r = libusb_submit_transfer(transfer);
+    //    if (r != 0) {
+    //        log_printf_dbg("Unable to submit URB. libusb error code: %d\n", r);
+    //    } //else {
+    //    //    cap_blk->issued = 1; // set to issue state
+    //    //    //h_dev->cap_trans_submit_bytes += transfer->length;
+    //    //}
+    //}
+}
+
+
+
+int usb_read_EP2_async(libusb_device_handle *handle, uint32_t* data_rx, int data_size_byte,  int loop_cnt)
+{
+	struct libusb_transfer **h_trans = malloc(loop_cnt * sizeof(struct libusb_transfer *));
+	int i,  r;
+	
+	for (i = 0; i < loop_cnt; i++){
+		h_trans[i] = libusb_alloc_transfer(0);
+	}
+	
+	g_async_xfer_total = 0;
+	g_async_xfer_idx = 0;
+	g_async_xfer_cnt = loop_cnt;
+	g_loop_stop = 0;
+	for (i = 0; i < loop_cnt; i++) {
+		uint32_t tx_len = data_size_byte;
+
+		/*  set timeout according to the order  */
+		libusb_fill_bulk_transfer(h_trans[i], handle, BULK_EP2_IN,
+								  (void*)data_rx, tx_len,
+								  (libusb_transfer_cb_fn)on_usb_read_EP2_async, NULL, 8000);
+#if LIBUSB_API_VERSION >= 0x01000103
+		libusb_transfer_set_stream_id(h_trans[i], i);
+#endif
+
+		if (libusb_submit_transfer(h_trans[i]) >= 0) {
+			//log_printf_dbg("trans[%d] issue: txlen=%d\n", i, tx_len);
+		} else {
+			log_printf_dbg("trans[%d] issue failed\n", i);
+		}
+	}
+	
+	/* event loop */
+	
+    struct timeval to;
+
+    to.tv_sec = 1;
+    to.tv_usec = 0 * 1000;
+    
+    int ret = 1;
+
+
+    do {
+        r = libusb_handle_events_timeout_completed(NULL, &to, &g_loop_stop);
+
+        if (r < 0) {
+            if (r == LIBUSB_ERROR_INTERRUPTED) {
+                log_printf_dbg("libusb_handle_events LIBUSB_ERROR_INTERRUPTED \n");
+                /* just retry */
+            } else if (r == LIBUSB_ERROR_TIMEOUT) {
+                log_printf_dbg("libusb_handle_events timeout \n");
+                ret = -2;
+                break;
+            } else {
+                /* There was an error. */
+                log_printf_dbg("libusb reports error: %s\n", libusb_error_name(r));
+            }
+
+            /* Break out of this loop only on fatal error.*/
+            if (r != LIBUSB_ERROR_BUSY && r != LIBUSB_ERROR_TIMEOUT
+                && r != LIBUSB_ERROR_OVERFLOW && r != LIBUSB_ERROR_INTERRUPTED) {
+                ret = -1;
+                
+                break;
+            }
+        }
+    } while (!g_loop_stop);
+	
+	free(h_trans);
+	return ret;
+	//e = libusb_bulk_transfer(handle, BULK_EP2_IN, (uint8_t*)data_rx, data_size_byte, &received, LIBUSB_BULK_TRANSFER_TIMEOUT_MILLISEC);  // Read
+	//if(e == 0) // Receive successfully
+	//{
+	//	if (received == data_size_byte)
+	//	{
+	//		return 1;
+	//	}
+	//	else
+	//	{
+	//		log_printf_dbg("*** USB Bulk Read(libusb_bulk_transfer) error received=%u (received shall be %u) = 0 ***\n", received, data_size_byte);
+	//		return -1;
+	//	}
+	//}
+	//else
+	//{
+	//	// read operation failed
+	//	log_printf_dbg("USB Bulk Read(libusb_bulk_transfer) return error=%d\n", e);
+	//	return -2;
+	//}
+}
 /*
 Return 0 if error or struct libusb_device_handle * if success
 */
@@ -866,6 +1029,10 @@ int USB_TestDataSpeed(struct libusb_device_handle *handle, uint32_t *writebuf, u
 	log_printf_dbg("Start Test2 USB Bulk Read(libusb_bulk_transfer)\n");
 	mTotal = 0;
 	gettimeofday(&start_data, NULL);
+	#if 0
+	usb_read_EP2_async(handle,  readbuf,  test_data_len,  test_num);
+	mTotal += test_data_len * test_num;
+	#else
 	for (mTestCount = 0; mTestCount < test_num; ++mTestCount) // loop test
 	{
 		if(usb_read_EP2(handle, readbuf, test_data_len) == 1)
@@ -879,6 +1046,7 @@ int USB_TestDataSpeed(struct libusb_device_handle *handle, uint32_t *writebuf, u
 			return -2;
 		}
 	}
+	#endif
 	gettimeofday(&curr_data, NULL);
 	log_printf_dbg("End Test\n");
 

@@ -355,6 +355,8 @@ int main(int argc, char *argv[])
 	{
 		memWBuf[0] = USB_CMD_LOGR; /* Read Log command */
 		usb_write_EP1(handle, data_tx);
+		
+		sleep_ms(USB_SWITCH_DELAY_MILLISEC);
 		/* Read Log */
 		if(usb_read_EP1(handle, data_rx) == 1)
 		{
@@ -373,6 +375,9 @@ int main(int argc, char *argv[])
 	{
 		memWBuf[0] = USB_CMD_USBS; // Get USB3 Status
 		usb_write_EP1(handle, data_tx);
+		
+		sleep_ms(USB_SWITCH_DELAY_MILLISEC);
+		
 		/* Read USB Status Report */
 		if(usb_read_EP1(handle, data_rx) == 1)
 		{
