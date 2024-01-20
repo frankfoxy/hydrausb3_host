@@ -4,7 +4,7 @@ VERSION = 1.0.3
 PREFIX = /usr/local
 
 # Flags
-CPPFLAGS = -DVERSION=\"$(VERSION)\"
+CPPFLAGS = -DVERSION=\"$(VERSION)\" -DUSB_NO_WRITE_TEST=0 -DTEST_SS_SPEED_ONLY=0
 
 ifeq ($(OS), Windows_NT)
 CFLAGS = -Wall -O3 `pkg-config --cflags libusb-1.0` $(INCLUDES)

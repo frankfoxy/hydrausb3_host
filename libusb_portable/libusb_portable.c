@@ -1002,7 +1002,7 @@ int USB_TestDataSpeed(struct libusb_device_handle *handle, uint32_t *writebuf, u
 	{
 		memWBuf[i] = swap_uint32(i+test_data_start_val); // Swap from LE to BE
 	}
-
+#if USB_NO_WRITE_TEST == 0
 	log_printf_dbg("Start Test1 USB Bulk Write(libusb_bulk_transfer)\n");
 	mTotal = 0;
 	gettimeofday(&start_data, NULL);
@@ -1025,6 +1025,7 @@ int USB_TestDataSpeed(struct libusb_device_handle *handle, uint32_t *writebuf, u
 	time_diff_s = TimevalDiff(&curr_data, &start_data);
 	speed_mbytes_per_sec = (float)(((double)mTotal) / (1000.0 * 1000.0)) / time_diff_s;
 	log_printf("Average speed %.1f MBytes/Sec, Total=%zu Bytes/%zu MBytes\n", speed_mbytes_per_sec, mTotal, (mTotal/(1000 * 1000)));
+#endif
 
 	log_printf_dbg("Start Test2 USB Bulk Read(libusb_bulk_transfer)\n");
 	mTotal = 0;

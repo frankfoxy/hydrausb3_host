@@ -19,6 +19,7 @@
 #include "libusb_portable.h"
 #include "usb_cmd.h"
 
+
 struct libusb_device_handle *handle = NULL;
 int usb_speed;
 
@@ -226,13 +227,14 @@ int main(int argc, char *argv[])
 	}
 	log_printf("\n");
 
+#if TEST_SS_SPEED_ONLY == 0
 	/* USB3 SS Test Data Integrity */
 	if(USB_TestDataIntegrity(handle, mWriteBigBuf, mReadBigBuf, TEST_INTEGRITY_NUM) != 0)
 	{
 		error_exit(NULL);
 	}
 	log_printf("\n");
-
+#endif
 	/* USB3 SS Test Data Speed */
 	if(USB_TestDataSpeed(handle, mWriteBigBuf, mReadBigBuf, TEST_NUM_SS, TEST_DATA_LEN) != 0)
 	{
@@ -240,7 +242,8 @@ int main(int argc, char *argv[])
 	}
 	log_printf("\n");
 
-	log_printf_dbg("Start USB2 HS Force\n");
+#if TEST_SS_SPEED_ONLY == 0
+	log_printf_dbg("-------- Start USB2 HS Force\n");
 	{
 		memWBuf[0] = USB_CMD_USB2; // Force USB2 HS
 		usb_write_EP1(handle, data_tx);
@@ -307,7 +310,7 @@ int main(int argc, char *argv[])
 			error_exit("Error usb_read_EP1() USB_CMD_USBS\n");
 		}
 	}
-
+#endif
 	log_printf_dbg("Start USB3 Force\n");
 	{
 		memWBuf[0] = USB_CMD_USB3; // Force USB3
@@ -336,14 +339,14 @@ int main(int argc, char *argv[])
 		error_exit("Error HydraUSB3 device shall be enumerated as USB3 SuperSpeed(5Gbit)\n");
 	}
 	log_printf("\n");
-
+#if TEST_SS_SPEED_ONLY == 0
 	/* USB3 SS Test Data Integrity */
 	if(USB_TestDataIntegrity(handle, mWriteBigBuf, mReadBigBuf, TEST_INTEGRITY_NUM) != 0)
 	{
 		error_exit(NULL);
 	}
 	log_printf("\n");
-
+#endif
 	/* USB3 SS Test Data Speed */
 	if(USB_TestDataSpeed(handle, mWriteBigBuf, mReadBigBuf, TEST_NUM_SS, TEST_DATA_LEN) != 0)
 	{
